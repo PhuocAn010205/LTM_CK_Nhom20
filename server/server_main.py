@@ -1,101 +1,99 @@
-import socket, cv2, pickle
-from threading import Thread
-from time import sleep
-import pyaudio
-from array import array
+import socket
+import threading
 
-HEADERSIZE = 10
-chunk = 1024  
-sample_format = pyaudio.paInt16  
-channels = 2
-fs = 44100  
+# import handler & managers (code bạn đã có)
+from server.handler import ClientHandler
+from server import room_manager
+from server import user_manager
+from server import db
 
-class ClientHandler:
-    def __init__(self, i, clientsocket, audiosocket):
-        self.i = i
-        self.threads = []
-        self.stop = False
-        self.clientsocket = clientsocket
-        self.audiosocket = audiosocket
-        self.p = pyaudio.PyAudio() 
-        self.stream = self.p.open(format=sample_format, channels=channels, rate=fs,
-                                  frames_per_buffer=chunk, input=True, output=True)
+# ================== CONFIG ==================
+IP = "0.0.0.0"
+CONTROL_PORT = 1222
+AUDIO_PORT = 1234
 
-    def handle(self, clientsocket, audiosocket):
-        print(f"[SERVER] Client {self.i} connected.")
-        while not self.stop:
-            try:
-                # Nhận video
-                data = b""
-                msg_size = int(clientsocket.recv(HEADERSIZE))
-                while len(data) < msg_size:
-                    data += clientsocket.recv(4096)
+clients = []          # danh sách client control
+audio_clients = []    # danh sách client audio
 
-                # Nhận audio
-                audio_data = audiosocket.recv(4096)
 
-                # Gửi lại cho client còn lại
-                o = 1 if (self.i == 0) else 0
-                clients[o].clientsocket.sendall(bytes("{:<{}}".format(len(data), HEADERSIZE), 'utf-8') + data)
+# ================== CONTROL SERVER ==================
+def start_control_server():
+    try:
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.bind((IP, CONTROL_PORT))
+        server_socket.listen(5)
+        print(f"[SERVER] Control server listening on {IP}:{CONTROL_PORT}")
+    except Exception as e:
+        print(f"[ERROR] Failed to start control server: {e}")
+        return
 
-                if len(audio_data) == 4096:
-                    self.stream.write(audio_data)
-                    clients[o].audiosocket.sendall(audio_data)
+    while True:
+        try:
+            client_socket, addr = server_socket.accept()
+            print(f"[CONTROL] New connection from {addr}")
 
-            except Exception as e:
-                print(f"[ERROR] {e}")
+            client_handler = ClientHandler(
+                client_socket,
+                addr,
+                clients,
+                room_manager.room_manager,
+                user_manager.user_manager,
+                db.db,
+            )
+            clients.append(client_handler)
+            client_handler.start()
+        except Exception as e:
+            print(f"[ERROR] Control connection error: {e}")
+
+
+# ================== AUDIO SERVER ==================
+def handle_audio_client(conn, addr):
+    print(f"[AUDIO] Connected {addr}")
+    try:
+        while True:
+            data = conn.recv(4096)
+            if not data:
                 break
-        print(f"[SERVER] Client {self.i} stopped.")
-
-    def start(self):
-        t = Thread(target=self.handle, args=(self.clientsocket, self.audiosocket))
-        self.stop = False
-        t.start()
-        self.threads.append(t)
-
-    def end(self):
-        self.stop = True
-        self.clientsocket.close()
-        self.audiosocket.close()
-        for t in self.threads:
-            t.join()
-        self.stream.close()
-        self.p.terminate()
+            # broadcast tới các audio client khác
+            for c in audio_clients:
+                if c != conn:
+                    c.sendall(data)
+    except Exception as e:
+        print(f"[AUDIO ERROR] {e}")
+    finally:
+        conn.close()
+        if conn in audio_clients:
+            audio_clients.remove(conn)
+        print(f"[AUDIO] Disconnected {addr}")
 
 
-# ======================
-# SERVER MAIN
-# ======================
-IP = "0.0.0.0"   # Lắng nghe tất cả IP
-PORT_VIDEO = 1222
-PORT_AUDIO = 1234
+def start_audio_server():
+    try:
+        audio_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        audio_sock.bind((IP, AUDIO_PORT))
+        audio_sock.listen(5)
+        print(f"[SERVER] Audio server listening on {IP}:{AUDIO_PORT}")
+    except Exception as e:
+        print(f"[ERROR] Failed to start audio server: {e}")
+        return
 
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.bind((IP, PORT_VIDEO))
-s.listen()
+    while True:
+        conn, addr = audio_sock.accept()
+        audio_clients.append(conn)
+        threading.Thread(target=handle_audio_client, args=(conn, addr), daemon=True).start()
 
-audio_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-audio_s.bind((IP, PORT_AUDIO))
-audio_s.listen()
 
-print(f"[SERVER] Listening on VIDEO:{PORT_VIDEO}, AUDIO:{PORT_AUDIO}")
+# ================== MAIN ==================
+if __name__ == "__main__":
+    try:
+        threading.Thread(target=start_control_server, daemon=True).start()
+        threading.Thread(target=start_audio_server, daemon=True).start()
+        print("[SERVER] Control + Audio servers are running...")
 
-clients = []
-for i in range(2):
-    print(f"[SERVER] Waiting for client {i}...")
-    clientsocket, addr = s.accept()
-    print(f"[SERVER] Client {i} VIDEO connected from {addr}")
-    audiosocket, addr = audio_s.accept()
-    print(f"[SERVER] Client {i} AUDIO connected from {addr}")
-    obj = ClientHandler(i, clientsocket, audiosocket)
-    clients.append(obj)
-
-clients[0].start()
-clients[1].start()
-
-input("[SERVER] Press ENTER to stop server...\n")
-print("[SERVER] Closing all...")
-for obj in clients:
-    obj.end()
-s.close()
-audio_s.close()
+        # giữ main thread sống
+        while True:
+            pass
+    except KeyboardInterrupt:
+        print("[SERVER] Shutting down...")
+        for client in clients:
+            client.stop()
