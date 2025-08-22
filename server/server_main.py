@@ -1,99 +1,41 @@
 import socket
-import threading
-
-# import handler & managers (code bạn đã có)
 from server.handler import ClientHandler
-from server import room_manager
-from server import user_manager
-from server import db
+from server.user_manager import UserManager
+from server.room_manager import RoomManager
 
-# ================== CONFIG ==================
-IP = "0.0.0.0"
-CONTROL_PORT = 1222
-AUDIO_PORT = 1234
+HOST = '0.0.0.0'  # Lắng nghe trên tất cả các interface mạng
+PORT = 65432      # Cổng mà server sẽ chạy
 
-clients = []          # danh sách client control
-audio_clients = []    # danh sách client audio
+def main():
+    # Khởi tạo các đối tượng quản lý trung tâm
+    user_manager = UserManager()
+    room_manager = RoomManager()
 
+    # Thiết lập socket server
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((HOST, PORT))
+    server_socket.listen(5) # Cho phép tối đa 5 kết nối trong hàng đợi
+    print(f"[*] Server đang lắng nghe trên {HOST}:{PORT}")
 
-# ================== CONTROL SERVER ==================
-def start_control_server():
     try:
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.bind((IP, CONTROL_PORT))
-        server_socket.listen(5)
-        print(f"[SERVER] Control server listening on {IP}:{CONTROL_PORT}")
-    except Exception as e:
-        print(f"[ERROR] Failed to start control server: {e}")
-        return
-
-    while True:
-        try:
-            client_socket, addr = server_socket.accept()
-            print(f"[CONTROL] New connection from {addr}")
-
-            client_handler = ClientHandler(
-                client_socket,
-                addr,
-                clients,
-                room_manager.room_manager,
-                user_manager.user_manager,
-                db.db,
+        while True:
+            # Chấp nhận kết nối mới từ client
+            client_socket, client_address = server_socket.accept()
+            
+            # Tạo một luồng (thread) mới để xử lý client này
+            # Truyền các đối tượng quản lý vào cho handler
+            client_thread = ClientHandler(
+                client_socket, 
+                client_address, 
+                user_manager, 
+                room_manager
             )
-            clients.append(client_handler)
-            client_handler.start()
-        except Exception as e:
-            print(f"[ERROR] Control connection error: {e}")
+            client_thread.start()
 
-
-# ================== AUDIO SERVER ==================
-def handle_audio_client(conn, addr):
-    print(f"[AUDIO] Connected {addr}")
-    try:
-        while True:
-            data = conn.recv(4096)
-            if not data:
-                break
-            # broadcast tới các audio client khác
-            for c in audio_clients:
-                if c != conn:
-                    c.sendall(data)
-    except Exception as e:
-        print(f"[AUDIO ERROR] {e}")
-    finally:
-        conn.close()
-        if conn in audio_clients:
-            audio_clients.remove(conn)
-        print(f"[AUDIO] Disconnected {addr}")
-
-
-def start_audio_server():
-    try:
-        audio_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        audio_sock.bind((IP, AUDIO_PORT))
-        audio_sock.listen(5)
-        print(f"[SERVER] Audio server listening on {IP}:{AUDIO_PORT}")
-    except Exception as e:
-        print(f"[ERROR] Failed to start audio server: {e}")
-        return
-
-    while True:
-        conn, addr = audio_sock.accept()
-        audio_clients.append(conn)
-        threading.Thread(target=handle_audio_client, args=(conn, addr), daemon=True).start()
-
-
-# ================== MAIN ==================
-if __name__ == "__main__":
-    try:
-        threading.Thread(target=start_control_server, daemon=True).start()
-        threading.Thread(target=start_audio_server, daemon=True).start()
-        print("[SERVER] Control + Audio servers are running...")
-
-        # giữ main thread sống
-        while True:
-            pass
     except KeyboardInterrupt:
-        print("[SERVER] Shutting down...")
-        for client in clients:
-            client.stop()
+        print("\n[*] Server đang tắt...")
+    finally:
+        server_socket.close()
+
+if __name__ == "__main__":
+    main()

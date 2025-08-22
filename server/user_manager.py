@@ -1,32 +1,28 @@
-from server.db import Database
-import mysql.connector
+from server import db
 
 class UserManager:
     def __init__(self):
-        # Tạo kết nối CSDL
-        self.db = Database()
+        """
+        Khởi tạo và đảm bảo database đã sẵn sàng bằng cách gọi hàm setup.
+        """
+        db.setup_database()
 
-    def validate_user(self, username, password):
-        """Kiểm tra đăng nhập"""
-        query = "SELECT * FROM users WHERE username = %s AND password = %s"
-        result = self.db.execute_query(query, (username, password))
-        return len(result) > 0
+    def handle_registration(self, username, email, password):
+        """
+        Xử lý logic đăng ký, kiểm tra đầu vào trước khi gọi đến db.
+        """
+        if not all([username, email, password]):
+            return False, "Vui lòng nhập đầy đủ thông tin."
+        return db.add_user(username, email, password)
 
-    def register_user(self, username, password, email=None):
-        """Đăng ký tài khoản mới"""
-        # Kiểm tra trùng username
-        check_query = "SELECT * FROM users WHERE username = %s"
-        existing = self.db.execute_query(check_query, (username,))
-        if len(existing) > 0:
-            return False, "Username already exists"
-
-        try:
-            insert_query = "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)"
-            self.db.cursor.execute(insert_query, (username, email, password))
-            self.db.conn.commit()
-            return True, "User registered successfully"
-        except mysql.connector.Error as err:
-            return False, f"Database error: {err}"
-
-# Singleton để dùng chung trong server
-user_manager = UserManager()
+    def handle_login(self, username, password):
+        """
+        Xử lý logic đăng nhập, kiểm tra đầu vào trước khi gọi đến db.
+        """
+        if not all([username, password]):
+            return False, "Vui lòng nhập tên đăng nhập và mật khẩu."
+        
+        if db.check_user(username, password):
+            return True, "Đăng nhập thành công"
+        else:
+            return False, "Tên đăng nhập hoặc mật khẩu không đúng"
