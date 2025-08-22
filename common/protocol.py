@@ -1,46 +1,32 @@
 import json
+import struct
 
 class Protocol:
-    @staticmethod
-    def encode_packet(packet_type, data):
-        """Encode a packet with type and data into JSON format."""
-        packet = {
-            "type": packet_type,
-            "data": data
-        }
-        return json.dumps(packet).encode('utf-8')
+    """
+    Định nghĩa cấu trúc và cách đóng gói tin.
+    Mỗi gói tin gửi đi sẽ có cấu trúc: [Độ dài (4 bytes)][Nội dung JSON (bytes)]
+    """
+    HEADER_LENGTH = 4
 
     @staticmethod
-    def decode_packet(raw_data):
-        """Decode a raw data packet into a dictionary."""
+    def create_packet(packet_type, data):
+        """Tạo nội dung gói tin dưới dạng dictionary."""
+        return {"type": packet_type, "data": data}
+
+    @staticmethod
+    def encode_and_frame_packet(packet_dict):
+        """
+        Mã hóa dictionary thành JSON, sau đó đóng gói với header độ dài.
+        Trả về một chuỗi bytes sẵn sàng để gửi qua socket.
+        """
+        json_data = json.dumps(packet_dict).encode('utf-8')
+        header = struct.pack('!I', len(json_data)) # '!I' là 4-byte unsigned integer
+        return header + json_data
+
+    @staticmethod
+    def decode_json(json_bytes):
+        """Giải mã chuỗi bytes JSON thành dictionary."""
         try:
-            return json.loads(raw_data.decode('utf-8'))
-        except (json.JSONDecodeError, AttributeError):
+            return json.loads(json_bytes.decode('utf-8'))
+        except (json.JSONDecodeError, UnicodeDecodeError):
             return None
-
-    @staticmethod
-    def create_login_packet(username, password):
-        """Create a login packet."""
-        return Protocol.encode_packet("login", {"username": username, "password": password})
-
-    # === THÊM MỚI HÀM NÀY ===
-    @staticmethod
-    def create_register_packet(username, password, email):
-        """Create a register packet."""
-        return Protocol.encode_packet("register", {"username": username, "password": password, "email": email})
-    # ==========================
-
-    @staticmethod
-    def create_join_packet(room):
-        """Create a join room packet."""
-        return Protocol.encode_packet("join", {"room": room})
-
-    @staticmethod
-    def create_leave_packet(room):
-        """Create a leave room packet."""
-        return Protocol.encode_packet("leave", {"room": room})
-
-    @staticmethod
-    def create_media_packet(room, media_data):
-        """Create a media packet."""
-        return Protocol.encode_packet("media", {"room": room, "media": media_data})

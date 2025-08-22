@@ -1,79 +1,115 @@
-import sys
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QPushButton, QLabel, QComboBox, QTextEdit)
+from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, 
+                             QHBoxLayout, QPushButton, QLabel, QListWidget, QListWidgetItem)
+from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtGui import QFont, QIcon
 
 class MainWindow(QMainWindow):
+    """
+    Cửa sổ chính của ứng dụng với giao diện nữ tính, sạch sẽ.
+    """
     def __init__(self, username):
         super().__init__()
         self.username = username
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle(f'Video Call - Chào, {self.username}')
-        self.setGeometry(200, 200, 800, 600)
+        self.setWindowTitle(f'Video Call - Chào mừng, {self.username}')
+        self.setGeometry(200, 200, 900, 600)
+        self.setStyleSheet("background-color: #F8F8FF;") # Màu nền trắng ma (GhostWhite)
 
-        # Widget trung tâm
+        # Widget trung tâm để chứa toàn bộ layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
-        # Panel điều khiển bên trái
-        controls_panel = QWidget()
-        controls_layout = QVBoxLayout(controls_panel)
-        controls_panel.setFixedWidth(250)
+        # Panel danh sách bạn bè/phòng bên trái
+        left_panel = QWidget()
+        left_panel.setFixedWidth(300)
+        left_panel.setStyleSheet("background-color: #FFF0F5;") # Màu hồng phấn
+        left_panel_layout = QVBoxLayout(left_panel)
+        left_panel_layout.setContentsMargins(15, 15, 15, 15)
 
-        # -- Phần chọn phòng
-        controls_layout.addWidget(QLabel('<h3>Chọn phòng</h3>'))
-        self.room_combo_box = QComboBox()
-        self.room_combo_box.addItems(['Phòng 1', 'Phòng 2', 'Phòng 3']) # Dữ liệu mẫu
-        controls_layout.addWidget(self.room_combo_box)
-        
-        join_button = QPushButton('Vào phòng')
-        join_button.clicked.connect(self.handle_join_room)
-        controls_layout.addWidget(join_button)
-        
-        leave_button = QPushButton('Rời phòng')
-        leave_button.clicked.connect(self.handle_leave_room)
-        controls_layout.addWidget(leave_button)
-        
-        controls_layout.addStretch() # Đẩy các widget lên trên
+        # -- Header Chào mừng
+        welcome_label = QLabel(f'Xin chào,\n<b style="font-size: 20px;">{self.username}</b>')
+        welcome_label.setStyleSheet("color: #8A2BE2;")
+        welcome_label.setFont(QFont("Arial", 14))
+        left_panel_layout.addWidget(welcome_label)
+        left_panel_layout.addSpacing(20)
 
-        # -- Phần điều khiển cuộc gọi
-        end_call_button = QPushButton('Kết thúc cuộc gọi')
-        end_call_button.setStyleSheet("background-color: red; color: white;")
-        end_call_button.clicked.connect(self.handle_end_call)
-        controls_layout.addWidget(end_call_button)
+        # -- Danh sách người dùng/phòng
+        list_header = QLabel("Danh sách bạn bè")
+        list_header.setFont(QFont("Arial", 12, QFont.Bold))
+        list_header.setStyleSheet("color: #4B0082;") # Màu chàm đậm (Indigo)
+        left_panel_layout.addWidget(list_header)
 
-        # Panel hiển thị video bên phải
-        video_panel = QWidget()
-        video_layout = QVBoxLayout(video_panel)
+        self.user_list = QListWidget()
+        self.user_list.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #D8BFD8;
+                border-radius: 10px;
+                background-color: white;
+            }
+            QListWidget::item {
+                padding: 15px;
+            }
+            QListWidget::item:hover {
+                background-color: #E6E6FA; /* Lavender */
+            }
+            QListWidget::item:selected {
+                background-color: #DDA0DD; /* Plum */
+                color: white;
+            }
+        """)
+        # Thêm vài người dùng mẫu
+        for name in ["Ngọc Anh", "Thảo My", "Bảo Châu", "Phương Linh"]:
+            item = QListWidgetItem(name)
+            item.setFont(QFont("Arial", 11))
+            self.user_list.addItem(item)
+        left_panel_layout.addWidget(self.user_list)
         
-        self.video_display_label = QLabel('Khu vực hiển thị Video')
-        self.video_display_label.setStyleSheet("background-color: black; color: white;")
+        # Panel hiển thị video và điều khiển bên phải
+        right_panel = QWidget()
+        right_panel_layout = QVBoxLayout(right_panel)
+        right_panel_layout.setContentsMargins(30, 30, 30, 30)
+
+        # -- Khu vực video
+        self.video_display_label = QLabel('Đang chờ cuộc gọi...')
+        self.video_display_label.setStyleSheet("background-color: black; color: white; border-radius: 15px;")
+        self.video_display_label.setAlignment(Qt.AlignCenter)
+        self.video_display_label.setFont(QFont("Arial", 16))
         self.video_display_label.setMinimumSize(400, 300)
-        video_layout.addWidget(self.video_display_label)
+        right_panel_layout.addWidget(self.video_display_label, 1) # Chiếm phần lớn không gian
 
-        # Thêm các panel vào layout chính
-        main_layout.addWidget(controls_panel)
-        main_layout.addWidget(video_panel)
+        # -- Khu vực nút điều khiển
+        button_layout = QHBoxLayout()
+        button_layout.setAlignment(Qt.AlignCenter)
+        button_layout.setSpacing(20)
 
-    def handle_join_room(self):
-        room_name = self.room_combo_box.currentText()
-        print(f"[{self.username}] đang vào phòng: {room_name}")
-        # TODO: Gửi gói tin `join_room` đến server
+        # Nút Bật/Tắt Mic và Camera (sẽ cần icon thật sau)
+        mic_button = QPushButton("Tắt Mic")
+        cam_button = QPushButton("Tắt Cam")
+        end_call_button = QPushButton("Kết Thúc")
 
-    def handle_leave_room(self):
-        print(f"[{self.username}] đã rời phòng.")
-        # TODO: Gửi gói tin `leave_room` đến server
+        button_style = """
+            QPushButton {
+                border-radius: 25px;
+                padding: 15px;
+                font-size: 14px;
+                font-weight: bold;
+                min-width: 100px;
+            }
+        """
+        mic_button.setStyleSheet(button_style + "background-color: #90EE90; color: black;") # Xanh lá nhạt
+        cam_button.setStyleSheet(button_style + "background-color: #ADD8E6; color: black;") # Xanh dương nhạt
+        end_call_button.setStyleSheet(button_style + "background-color: #FFB6C1; color: black;") # Hồng nhạt
+        
+        button_layout.addWidget(mic_button)
+        button_layout.addWidget(cam_button)
+        button_layout.addWidget(end_call_button)
+        right_panel_layout.addLayout(button_layout)
 
-    def handle_end_call(self):
-        print(f"[{self.username}] đã kết thúc cuộc gọi.")
-        # TODO: Xử lý kết thúc cuộc gọi, có thể đóng ứng dụng hoặc quay lại màn hình chọn phòng
-        self.close()
-
-# Dùng để chạy thử nghiệm file này một cách độc lập
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    main_win = MainWindow("TestUser")
-    main_win.show()
-    sys.exit(app.exec_())
+        # Gắn các panel vào layout chính
+        main_layout.addWidget(left_panel)
+        main_layout.addWidget(right_panel)
