@@ -1,80 +1,67 @@
-# server/db.py
 import sqlite3
-import hashlib # Thư viện để băm mật khẩu
+import hashlib # Để mã hóa mật khẩu
 
-DATABASE_NAME = '../data/video_call.db' # Lưu file db trong thư mục data
-
-def get_db_connection():
-    """Tạo kết nối tới database"""
-    conn = sqlite3.connect(DATABASE_NAME)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def create_tables():
-    """Tạo bảng users nếu chưa tồn tại"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Mật khẩu sẽ được lưu dưới dạng hash để bảo mật
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    
-    conn.commit()
-    conn.close()
-    print("Bảng 'users' đã được tạo hoặc đã tồn tại.")
+DB_PATH = 'data/video_call.db'
 
 def hash_password(password):
-    """Băm mật khẩu bằng SHA-256"""
+    """Mã hóa mật khẩu bằng SHA-256."""
     return hashlib.sha256(password.encode()).hexdigest()
 
-def add_user(username, password):
-    """Thêm một user mới vào database"""
-    conn = get_db_connection()
+def db_connect():
+    """Tạo kết nối đến cơ sở dữ liệu."""
+    return sqlite3.connect(DB_PATH)
+
+def setup_database():
+    """Tạo bảng 'users' nếu nó chưa tồn tại."""
+    conn = db_connect()
     cursor = conn.cursor()
-    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+    print("Database setup complete. 'users' table is ready.")
+
+def add_user(username, email, password):
+    """Thêm một người dùng mới vào database."""
+    conn = db_connect()
+    cursor = conn.cursor()
+    password_hash = hash_password(password)
     try:
         cursor.execute(
-            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-            (username, hash_password(password))
+            "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+            (username, email, password_hash)
         )
         conn.commit()
-        print(f"Đã thêm user '{username}' thành công.")
-        return True
-    except sqlite3.IntegrityError:
-        print(f"Lỗi: User '{username}' đã tồnTAIN.")
-        return False
+        return True, "Đăng ký thành công"
+    except sqlite3.IntegrityError as e:
+        # Lỗi xảy ra khi username hoặc email đã tồn tại
+        if 'username' in str(e):
+            return False, "Tên đăng nhập đã tồn tại."
+        if 'email' in str(e):
+            return False, "Email đã được sử dụng."
+        return False, "Lỗi không xác định."
     finally:
         conn.close()
 
 def check_user(username, password):
-    """Kiểm tra thông tin đăng nhập của user"""
-    conn = get_db_connection()
+    """Kiểm tra thông tin đăng nhập của người dùng."""
+    conn = db_connect()
     cursor = conn.cursor()
-    
+    password_hash = hash_password(password)
     cursor.execute(
         "SELECT * FROM users WHERE username = ? AND password_hash = ?",
-        (username, hash_password(password))
+        (username, password_hash)
     )
-    
     user = cursor.fetchone()
     conn.close()
-    
     return user is not None
 
-# Chạy lần đầu để tạo bảng
+# Chạy một lần để khởi tạo DB khi bắt đầu
 if __name__ == '__main__':
-    # Tạo thư mục data nếu chưa có
-    import os
-    if not os.path.exists('../data'):
-        os.makedirs('../data')
-    
-    create_tables()
-    # Thêm một vài user mẫu để test
-    add_user('user1', 'pass1')
-    add_user('user2', 'pass2')
+    setup_database()
