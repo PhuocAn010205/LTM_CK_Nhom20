@@ -27,6 +27,8 @@ class Protocol:
     def decode_json(json_bytes):
         """Giải mã chuỗi bytes JSON thành dictionary."""
         try:
-            return json.loads(json_bytes.decode('utf-8'))
+            # SỬA LỖI Ở ĐÂY: Chuyển QByteArray thành bytes tiêu chuẩn
+            standard_bytes = bytes(json_bytes)
+            return json.loads(standard_bytes.decode('utf-8'))
         except (json.JSONDecodeError, UnicodeDecodeError):
             return None
